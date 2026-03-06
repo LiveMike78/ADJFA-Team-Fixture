@@ -1,22 +1,25 @@
-# ⚽ ha-fixture-sync
+# ⚽ ADJFA Team Fixture
 
-[![Build & Push Docker Image](https://github.com/YOUR_USERNAME/ha-fixture-sync/actions/workflows/docker.yml/badge.svg)](https://github.com/YOUR_USERNAME/ha-fixture-sync/actions/workflows/docker.yml)
+[![Build & Push Docker Image](https://github.com/YOUR_USERNAME/adjfa-team-fixture/actions/workflows/docker.yml/badge.svg)](https://github.com/YOUR_USERNAME/adjfa-team-fixture/actions/workflows/docker.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Docker Image](https://img.shields.io/badge/ghcr.io-ha--fixture--sync-blue?logo=docker)](https://github.com/YOUR_USERNAME/ha-fixture-sync/pkgs/container/ha-fixture-sync)
+[![Docker Image](https://img.shields.io/badge/ghcr.io-the--gaffer-blue?logo=docker)](https://github.com/YOUR_USERNAME/adjfa-team-fixture/pkgs/container/adjfa-team-fixture)
 
-A lightweight Docker container that scrapes a football league fixtures page and automatically syncs matches into a **Home Assistant Local Calendar** — adding new fixtures on each run and alerting you to cancellations/postponements.
+A lightweight Docker container that scrapes a football league fixtures page and syncs matches directly into **Google Calendar** — creating new fixtures, skipping duplicates, and **automatically deleting** cancelled or postponed ones.
 
 - ✅ Zero npm dependencies — pure Node.js standard library
+- ✅ Full create **and delete** via the Google Calendar API
 - ✅ Deduplication — won't create the same fixture twice
-- ✅ Cancellation detection — sends a persistent HA notification when a fixture is postponed/cancelled
-- ✅ Configurable via environment variables
+- ✅ Cancellation detection — automatically removes postponed/cancelled fixtures
+- ✅ Service Account auth — no browser login, runs headlessly forever
 - ✅ Multi-arch Docker image (`amd64` + `arm64`)
 
 ---
 
 ## Prerequisites
 
-- **Home Assistant** with the [Local Calendar integration](https://www.home-assistant.io/integrations/local_calendar/) enabled
+- A **Google Cloud project** with the [Google Calendar API enabled](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com)
+- A **Service Account** with a JSON key (see [Google Cloud Setup](#google-cloud-setup) below)
+- A **Google Calendar** shared with the service account
 - **Docker** (with Compose) on your host
 
 ---
@@ -24,14 +27,10 @@ A lightweight Docker container that scrapes a football league fixtures page and 
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ha-fixture-sync.git
-cd ha-fixture-sync
+git clone https://github.com/YOUR_USERNAME/adjfa-team-fixture.git
+cd adjfa-team-fixture
 cp .env.example .env
-```
-
-Edit `.env` with your values (see [Configuration](#configuration) below), then:
-
-```bash
+# Edit .env with your values
 docker compose up -d
 ```
 
@@ -43,44 +42,54 @@ docker compose logs -f
 
 ---
 
-## Home Assistant Setup
+## Google Cloud Setup
 
-### 1. Create a Local Calendar
+### 1. Enable the Calendar API
 
-**Settings → Integrations → Add Integration → Local Calendar**
+In your existing Google Cloud project:
 
-Give it a name (e.g. *Blackburn FC*). The entity ID will be something like `calendar.blackburn_fc` — note this for the `CALENDAR` env var.
+[APIs & Services → Library → Google Calendar API → Enable](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com)
 
-### 2. Generate a Long-Lived Access Token
+### 2. Create a Service Account
 
-**HA → Your Profile (bottom-left) → Long-Lived Access Tokens → Create Token**
+**IAM & Admin → Service Accounts → Create Service Account**
 
-Copy it immediately — you won't see it again. Use it as your `HA_TOKEN`.
+- Give it a name (e.g. `adjfa-team-fixture`  or any name you like)
+- No roles needed at project level — click through to finish
+
+### 3. Create a JSON Key
+
+**Service Accounts → [your account] → Keys → Add Key → Create new key → JSON**
+
+Download the `.json` file. You'll paste its contents as the `GOOGLE_SERVICE_ACCOUNT_JSON` env var (as a single line).
+
+### 4. Share your calendar with the service account
+
+In **Google Calendar** on the web:
+
+**Settings → [Your Calendar] → Share with specific people → Add person**
+
+Enter the service account's email address (format: `name@project.iam.gserviceaccount.com`) and grant **"Make changes to events"** permission.
+
+### 5. Get your Calendar ID
+
+**Google Calendar → Settings → [Your Calendar] → Calendar ID**
+
+It looks like `abc123@group.calendar.google.com` or your Gmail address for the primary calendar.
 
 ---
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in your values:
-
-```bash
-cp .env.example .env
-```
-
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `HA_URL` | ✅ | — | Your HA URL, e.g. `http://192.168.1.10:8123` |
-| `HA_TOKEN` | ✅ * | — | Long-lived access token (recommended) |
-| `HA_USERNAME` | ✅ * | — | HA username (legacy — needs enabling in HA) |
-| `HA_PASSWORD` | ✅ * | — | HA password |
-| `CALENDAR` | ✅ | `calendar.fixtures` | Entity ID of the target Local Calendar |
-| `FIXTURE_URL` | ✅ | — | Full URL of the league fixtures page |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | ✅ | — | Full contents of the service account JSON key (single line) |
+| `CALENDAR_ID` | ✅ | — | Google Calendar ID to sync into |
+| `FIXTURE_URL` | ✅ | — | URL of the league fixtures page |
 | `TEAM_NAME` | ✅ | — | Team name exactly as it appears on the page |
-| `UPDATE_FREQUENCY` | ❌ | `360` | Sync interval in minutes (360 = every 6 hours) |
-| `DRY_RUN` | ❌ | `false` | Log actions without making any changes |
+| `UPDATE_FREQUENCY` | ❌ | `360` | How often to sync, in minutes |
+| `DRY_RUN` | ❌ | `false` | Log what would happen without making any changes |
 | `DEBUG` | ❌ | `false` | Verbose error stack traces |
-
-\* Either `HA_TOKEN` **or** `HA_USERNAME` + `HA_PASSWORD` required.
 
 ---
 
@@ -88,39 +97,17 @@ cp .env.example .env
 
 On each run the container:
 
-1. **Fetches** the configured fixture page
-2. **Parses** all table rows that contain the team name
-3. **Fetches** existing events from the HA calendar (next 365 days)
-4. **Adds** any fixture not already present (deduplication by match title + date)
-5. **Skips** fixtures already in the calendar
-6. **Notifies** via HA persistent notification for any fixture detected as cancelled or postponed
+1. **Authenticates** with Google using a JWT signed with the service account private key
+2. **Fetches** the configured fixture page HTML
+3. **Parses** all table rows containing the team name
+4. **Lists** existing managed events from Google Calendar (identified by a `managedBy=adjfa-team-fixture` extended property)
+5. **Creates** any fixture not already present
+6. **Skips** fixtures already in the calendar
+7. **Deletes** any fixture marked as cancelled or postponed
 
-### Cancellation detection
+Cancellation keywords: `cancel`, `postpone`, `void`, `called off`, `P.P.`
 
-Keywords that trigger a cancellation alert: `cancel`, `postpone`, `void`, `called off`, `P.P.`
-
-> **Why not delete the event automatically?**
-> Home Assistant's Local Calendar integration does not expose a `delete_event` or `update_event` API service. When a cancellation is detected, the container sends a persistent notification in HA so you can remove the event manually.
->
-> Advanced users with file system access to the HA host can edit the `.ics` file directly:
-> ```
-> /config/.storage/local_calendar/<calendar_name>/calendar.ics
-> ```
-
----
-
-## Using a Pre-Built Image
-
-Once you've pushed to GitHub, the CI workflow automatically builds and publishes a multi-arch image to GitHub Container Registry on every push to `main`. You can then use it directly without building:
-
-```yaml
-# docker-compose.yml
-services:
-  ha-fixture-sync:
-    image: ghcr.io/YOUR_USERNAME/ha-fixture-sync:latest
-    restart: unless-stopped
-    env_file: .env
-```
+Events created by adjfa-team-fixture are tagged with a private extended property (`managedBy=adjfa-team-fixture` + `fixtureId`) so the container only ever touches events it created — it will never modify anything you've added manually.
 
 ---
 
@@ -133,29 +120,40 @@ docker run --rm \
   --env-file .env \
   -e DRY_RUN=true \
   -e DEBUG=true \
-  ghcr.io/YOUR_USERNAME/ha-fixture-sync:latest
+  ghcr.io/YOUR_USERNAME/adjfa-team-fixture:latest
 ```
 
-The parser logs the raw cell array from the first matching table row — this lets you verify the column layout matches the fixture site's HTML structure.
+The parser logs the raw cell array from the first matching table row — use this to verify the column layout matches the site's HTML.
 
-**No fixtures found?** Check that `TEAM_NAME` matches the page exactly (copy-paste from the site). The match is case-insensitive but must be an exact substring.
+**No fixtures found?** Check that `TEAM_NAME` exactly matches the text on the page (copy-paste it). The comparison is case-insensitive but must be an exact substring match.
+
+---
+
+## Using a Pre-Built Image
+
+The CI workflow automatically builds and publishes a multi-arch image to GitHub Container Registry on every push to `main`. To use it without building locally, `docker-compose.yml` is already configured to pull it:
+
+```bash
+docker compose pull
+docker compose up -d
+```
 
 ---
 
 ## Project Structure
 
 ```
-ha-fixture-sync/
+adjfa-team-fixture/
 ├── .github/
 │   ├── workflows/
-│   │   └── docker.yml          # CI: build & push multi-arch image to GHCR
+│   │   └── docker.yml              # CI: build & push multi-arch image to GHCR
 │   └── ISSUE_TEMPLATE/
 │       ├── bug_report.md
 │       └── feature_request.md
 ├── src/
-│   ├── entrypoint.js           # Scheduler — runs sync on configured interval
-│   └── sync.js                 # Core logic: fetch → parse → diff → sync
-├── .env.example                # Template — copy to .env and fill in values
+│   ├── entrypoint.js               # Scheduler — runs sync on configured interval
+│   └── sync.js                     # Core: fetch → parse → diff → Google Calendar
+├── .env.example                    # Template — copy to .env and fill in values
 ├── .gitignore
 ├── Dockerfile
 ├── docker-compose.yml
@@ -171,8 +169,27 @@ Issues and PRs welcome. Please open an issue first for significant changes.
 
 1. Fork the repo
 2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Commit your changes
-4. Push and open a Pull Request
+3. Commit and push
+4. Open a Pull Request
+
+---
+
+## Publishing to GitHub
+
+After cloning and filling in your details:
+
+```bash
+# Replace YOUR_USERNAME with your GitHub username in:
+#   README.md, docker-compose.yml, .github/workflows/docker.yml
+
+git init
+git add .
+git commit -m "Initial commit"
+git remote add origin https://github.com/YOUR_USERNAME/adjfa-team-fixture.git
+git push -u origin main
+```
+
+The CI workflow will fire and publish the Docker image to GHCR automatically.
 
 ---
 

@@ -1,23 +1,22 @@
 services:
-  ha-fixture-sync:
-    # Option A: use the pre-built image from GitHub Container Registry (default)
-    image: ghcr.io/YOUR_USERNAME/ha-fixture-sync:latest
+  adjfa-team-fixture:
+    # Option A: pre-built image from GitHub Container Registry (default)
+    image: ghcr.io/YOUR_USERNAME/adjfa-team-fixture:latest
 
-    # Option B: build locally (comment out 'image' above and uncomment below)
+    # Option B: build locally
     # build: .
 
-    container_name: ha-fixture-sync
+    container_name: adjfa-team-fixture
     restart: unless-stopped
 
-    # Load all config from .env file (copy .env.example → .env to get started)
+    # Load config from .env  (cp .env.example .env to get started)
     env_file:
       - .env
 
-    # Or set values inline (useful for quick testing):
+    # Or set inline for quick testing:
     # environment:
-    #   HA_URL: "http://homeassistant.local:8123"
-    #   HA_TOKEN: "your_token_here"
-    #   CALENDAR: "calendar.blackburn_fc"
+    #   GOOGLE_SERVICE_ACCOUNT_JSON: '{"type":"service_account",...}'
+    #   CALENDAR_ID: "your-calendar-id@group.calendar.google.com"
     #   FIXTURE_URL: "https://www.adjfa.org.uk/fixtureslge/1020"
     #   TEAM_NAME: "Blackburn Football Club (2012)"
     #   UPDATE_FREQUENCY: "360"

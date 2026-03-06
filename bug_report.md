@@ -11,7 +11,6 @@ A clear description of what's going wrong.
 
 **Environment**
 - Docker host OS:
-- HA version:
 - Container tag/commit:
 
 **Relevant logs**
@@ -19,11 +18,10 @@ A clear description of what's going wrong.
 paste docker compose logs output here
 ```
 
-**Configuration (redact your token!)**
+**Configuration (redact your service account JSON and any secrets!)**
 ```
-HA_URL=http://...
-CALENDAR=calendar.xxx
-FIXTURE_URL=https://...
+CALENDAR_ID=...
+FIXTURE_URL=...
 TEAM_NAME=...
 UPDATE_FREQUENCY=...
 DRY_RUN=false

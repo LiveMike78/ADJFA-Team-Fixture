@@ -2,45 +2,38 @@
 
 /**
  * entrypoint.js
- * Runs sync immediately on start, then schedules repeats based on
- * UPDATE_FREQUENCY env var (in minutes, default 360 = 6 hours).
+ * Runs sync immediately on container start, then on a repeating interval.
+ * UPDATE_FREQUENCY is in minutes (default: 360 = every 6 hours).
  */
 
-const { execSync, spawn } = require('child_process');
+const { spawn } = require('child_process');
 
 const FREQUENCY_MINUTES = parseInt(process.env.UPDATE_FREQUENCY || '360', 10);
 const FREQUENCY_MS      = FREQUENCY_MINUTES * 60 * 1000;
 
 function runSync() {
-  console.log(`\n[SCHEDULER] Triggering sync (next run in ${FREQUENCY_MINUTES} minutes)`);
   const child = spawn('node', ['/app/src/sync.js'], {
     stdio: 'inherit',
-    env: process.env,
+    env:   process.env,
   });
-  child.on('exit', (code) => {
-    if (code !== 0 && code !== null) {
-      console.error(`[SCHEDULER] Sync exited with code ${code}`);
+  child.on('exit', code => {
+    if (code && code !== 0) {
+      console.error(`[SCHEDULER] Sync process exited with code ${code}`);
     }
   });
 }
 
-console.log(`[SCHEDULER] HA Fixture Sync starting`);
-console.log(`[SCHEDULER] Update frequency: every ${FREQUENCY_MINUTES} minutes`);
-console.log(`[SCHEDULER] Team: ${process.env.TEAM_NAME || '(not set)'}`);
-console.log(`[SCHEDULER] Calendar: ${process.env.CALENDAR || '(not set)'}`);
+console.log('┌─────────────────────────────────────────┐');
+console.log('│       ⚽  ADJFA Team Fixture                │');
+console.log('│  Football fixture → Google Calendar sync  │');
+console.log('└─────────────────────────────────────────┘');
+console.log(`[SCHEDULER] Update frequency : every ${FREQUENCY_MINUTES} minutes`);
+console.log(`[SCHEDULER] Team             : ${process.env.TEAM_NAME || '(not set)'}`);
+console.log(`[SCHEDULER] Calendar ID      : ${process.env.CALENDAR_ID || '(not set)'}`);
+console.log('');
 
-// Run immediately
 runSync();
-
-// Then repeat
 setInterval(runSync, FREQUENCY_MS);
 
-// Keep process alive
-process.on('SIGTERM', () => {
-  console.log('[SCHEDULER] Received SIGTERM, shutting down gracefully.');
-  process.exit(0);
-});
-process.on('SIGINT', () => {
-  console.log('[SCHEDULER] Received SIGINT, shutting down.');
-  process.exit(0);
-});
+process.on('SIGTERM', () => { console.log('[SCHEDULER] SIGTERM received, exiting.'); process.exit(0); });
+process.on('SIGINT',  () => { console.log('[SCHEDULER] SIGINT received, exiting.');  process.exit(0); });
